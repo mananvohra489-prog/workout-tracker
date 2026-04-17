@@ -7,17 +7,14 @@ from datetime import date
 # 1. Database Setup
 DATA_FILE = "workout_progress.csv"
 if not os.path.exists(DATA_FILE):
-    # Added "Body Part" column to the database
     df = pd.DataFrame(columns=["Date", "Session", "Body Part", "Exercise", "Weight (kg)", "Sets", "Reps", "Volume"])
     df.to_csv(DATA_FILE, index=False)
 
-st.set_page_config(page_title="Pro Gym Tracker", layout="centered")
+st.set_page_config(page_title="6-Day Pro Tracker", layout="wide") # Wide layout for better visibility
 st.title("🏋️ Ultimate 6-Day Tracker")
 
-# --- SIDEBAR ---
+# --- SIDEBAR: QUICK TOOLS ---
 st.sidebar.header("⚡ Quick Actions")
-
-# Apple Music
 st.sidebar.link_button("🎵 Open Apple Music", "https://music.apple.com/library/playlists")
 
 st.sidebar.markdown("---")
@@ -35,64 +32,64 @@ if st.sidebar.button("Start Timer"):
 
 st.sidebar.markdown("---")
 
-# Logging Section
-st.sidebar.subheader("📝 Log Workout")
+# --- MAIN LOGGING SECTION ---
+st.header("📝 Log Your Session")
 
-# DATE TOGGLE
-date_mode = st.sidebar.radio("Workout Date:", ["Today", "Other Date"], horizontal=True)
-log_date = date.today() if date_mode == "Today" else st.sidebar.date_input("Pick Date", date.today())
+# Row 1: Date and Session Type
+col1, col2, col3 = st.columns(3)
+with col1:
+    date_mode = st.radio("Workout Date:", ["Today", "Other Date"], horizontal=True)
+    log_date = date.today() if date_mode == "Today" else st.date_input("Pick Date", date.today())
+with col2:
+    session = st.selectbox("Session Type", ["Chest/Bi A", "Back/Tri A", "Legs/Shoulders A", "Chest/Bi B", "Back/Tri B", "Legs/Shoulders B", "Custom"])
+with col3:
+    body_part = "N/A"
+    if session == "Custom":
+        body_part = st.selectbox("Target Muscle:", ["Chest", "Back", "Legs", "Shoulders", "Biceps", "Triceps", "Abs", "Cardio"])
+    else:
+        body_part = session.split("/")[0] if "/" in session else session
 
-# Session Selection
-session = st.sidebar.selectbox("Session", ["Chest/Bi A", "Back/Tri A", "Legs/Shoulders A", "Chest/Bi B", "Back/Tri B", "Legs/Shoulders B", "Custom"])
+st.markdown("---")
 
-# NEW: Body Part selection for Custom workouts
-body_part = "N/A"
-if session == "Custom":
-    body_part = st.sidebar.selectbox("Target Muscle:", ["Chest", "Back", "Legs", "Shoulders", "Biceps", "Triceps", "Abs", "Cardio"])
-else:
-    # Auto-assign body part based on session name for cleaner data
-    body_part = session.split(" ")[0]
-
-ex = st.sidebar.text_input("Exercise Name")
-w = st.sidebar.number_input("Weight (kg)", min_value=0.0, step=2.5)
-
-# PLATE CALCULATOR
-if w > 20:
-    side_weight = (w - 20) / 2
-    st.sidebar.info(f"💡 Load {side_weight}kg on each side")
-
-s = st.sidebar.number_input("Sets", min_value=1)
-r = st.sidebar.number_input("Reps", min_value=1)
-
-if st.sidebar.button("Log Lift"):
-    if ex:
-        vol = w * s * r
-        new_data = pd.DataFrame({
-            "Date": [log_date], 
-            "Session": [session], 
-            "Body Part": [body_part],
-            "Exercise": [ex], 
-            "Weight (kg)": [w], 
-            "Sets": [s], 
-            "Reps": [r], 
-            "Volume": [vol]
+# Row 2: Bulk Exercise Inputs (5 Slots)
+st.subheader("Enter Exercises")
+entries = []
+for i in range(1, 6):
+    c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+    with c1:
+        ex_name = st.text_input(f"Exercise {i}", key=f"ex_{i}", placeholder="e.g. Bench Press")
+    with c2:
+        w = st.number_input("Weight (kg)", min_value=0.0, step=2.5, key=f"w_{i}")
+    with c3:
+        s = st.number_input("Sets", min_value=0, step=1, key=f"s_{i}")
+    with c4:
+        r = st.number_input("Reps", min_value=0, step=1, key=f"r_{i}")
+    
+    if ex_name and s > 0:
+        entries.append({
+            "Date": log_date, "Session": session, "Body Part": body_part,
+            "Exercise": ex_name, "Weight (kg)": w, "Sets": s, "Reps": r, "Volume": w * s * r
         })
-        new_data.to_csv(DATA_FILE, mode='a', header=False, index=False)
-        st.sidebar.success(f"Logged {ex} ({body_part})!")
 
-# --- MAIN DASHBOARD ---
+if st.button("🔥 Log All Exercises", use_container_width=True):
+    if entries:
+        new_df = pd.DataFrame(entries)
+        new_df.to_csv(DATA_FILE, mode='a', header=False, index=False)
+        st.success(f"Successfully logged {len(entries)} exercises!")
+        time.sleep(1)
+        st.rerun()
+    else:
+        st.error("Please fill in at least one exercise.")
+
+# --- CHARTS ---
+st.markdown("---")
 df = pd.read_csv(DATA_FILE)
 if not df.empty:
-    st.header("📈 Progress")
-    exercise_list = df["Exercise"].unique()
-    selected_ex = st.selectbox("Select Exercise", exercise_list)
+    st.header("📈 Progress Dashboard")
+    exercise_list = sorted(df["Exercise"].unique())
+    selected_ex = st.selectbox("Select Exercise to View Trend", exercise_list)
     filt = df[df["Exercise"] == selected_ex]
     
     t1, t2 = st.tabs(["Weight Trend", "Volume Trend"])
     with t1: st.line_chart(filt.set_index("Date")["Weight (kg)"])
     with t2: st.line_chart(filt.set_index("Date")["Volume"])
-    
-    # Show the body part in the history table
-    st.write("### History")
-    st.table(filt[["Date", "Body Part", "Weight (kg)", "Sets", "Reps"]].tail(5))
-    
