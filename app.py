@@ -6,15 +6,14 @@ from datetime import date
 
 # 1. Database Setup with Safety Check
 DATA_FILE = "workout_progress.csv"
-REQUIRED_COLS = ["Date", "Session", "Body Part", "Exercise", "Set", "Weight (kg)", "Reps", "Volume"]
+# Added "Song" to the required columns
+REQUIRED_COLS = ["Date", "Session", "Body Part", "Exercise", "Set", "Weight (kg)", "Reps", "Volume", "Song"]
 
-# If file exists but is old/wrong, we delete it to reset
 if os.path.exists(DATA_FILE):
     existing_df = pd.read_csv(DATA_FILE)
-    if "Set" not in existing_df.columns:
-        os.remove(DATA_FILE)
+    if "Song" not in existing_df.columns:
+        os.remove(DATA_FILE) # Reset to add new column
 
-# Create fresh file if it doesn't exist
 if not os.path.exists(DATA_FILE):
     df = pd.DataFrame(columns=REQUIRED_COLS)
     df.to_csv(DATA_FILE, index=False)
@@ -51,14 +50,12 @@ with col1:
 with col2:
     session = st.selectbox("Session Type", ["Chest/Bi A", "Back/Tri A", "Legs/Shoulders A", "Chest/Bi B", "Back/Tri B", "Legs/Shoulders B", "Custom"])
 with col3:
-    if session == "Custom":
-        body_part = st.selectbox("Target Muscle:", ["Chest", "Back", "Legs", "Shoulders", "Biceps", "Triceps", "Abs", "Cardio"])
-    else:
-        body_part = session.split("/")[0] if "/" in session else session
+    # NEW: Now Playing Feature
+    current_song = st.text_input("🎵 Now Playing:", placeholder="e.g. Sidhu Moose Wala - 295")
 
 st.markdown("---")
 
-# Bulk Exercise Inputs (8 Exercises)
+# Bulk Exercise Inputs
 all_entries = []
 for i in range(1, 9):
     with st.expander(f"Exercise {i}", expanded=(i==1)):
@@ -69,6 +66,9 @@ for i in range(1, 9):
             num_sets = st.number_input(f"Sets", min_value=1, max_value=6, value=3, key=f"n_sets_{i}")
         
         if ex_name:
+            # Determine Body Part
+            body_part = session.split("/")[0] if "/" in session else "Custom"
+            
             st.markdown("**Set Details (Weight | Reps)**")
             set_cols = st.columns(num_sets)
             for s_idx in range(num_sets):
@@ -78,31 +78,36 @@ for i in range(1, 9):
                     if w > 0 and r > 0:
                         all_entries.append({
                             "Date": log_date, "Session": session, "Body Part": body_part,
-                            "Exercise": ex_name, "Set": s_idx + 1, "Weight (kg)": w, "Reps": r, "Volume": w * r
+                            "Exercise": ex_name, "Set": s_idx + 1, "Weight (kg)": w, "Reps": r, 
+                            "Volume": w * r, "Song": current_song # Saving the song name
                         })
 
 if st.button("🔥 Log Full Session", use_container_width=True):
     if all_entries:
         new_df = pd.DataFrame(all_entries)
         new_df.to_csv(DATA_FILE, mode='a', header=False, index=False)
-        st.success("Session Saved!")
+        st.success("Session Saved with Music Vibes!")
         time.sleep(1)
         st.rerun()
 
-# --- CHARTS ---
+# --- CHARTS & HISTORY ---
 st.markdown("---")
 df = pd.read_csv(DATA_FILE)
 if not df.empty:
     st.header("📈 Progress Dashboard")
-    # Convert Date to proper format for sorting
-    df['Date'] = pd.to_datetime(df['Date']).dt.date
     exercise_list = sorted(df["Exercise"].unique())
     selected_ex = st.selectbox("Select Exercise", exercise_list)
     filt = df[df["Exercise"] == selected_ex]
     
-    max_trend = filt.groupby("Date")["Weight (kg)"].max().reset_index()
-    vol_trend = filt.groupby("Date")["Volume"].sum().reset_index()
+    t1, t2, t3 = st.tabs(["Max Weight", "Volume", "Music & History"])
     
-    t1, t2 = st.tabs(["Max Weight Trend", "Daily Volume Trend"])
-    with t1: st.line_chart(max_trend.set_index("Date")["Weight (kg)"])
-    with t2: st.line_chart(vol_trend.set_index("Date")["Volume"])
+    with t1:
+        max_trend = filt.groupby("Date")["Weight (kg)"].max().reset_index()
+        st.line_chart(max_trend.set_index("Date")["Weight (kg)"])
+    with t2:
+        vol_trend = filt.groupby("Date")["Volume"].sum().reset_index()
+        st.line_chart(vol_trend.set_index("Date")["Volume"])
+    with t3:
+        st.write("### Previous Sets & Song Tracks")
+        # Displaying the song in the history table
+        st.dataframe(filt[["Date", "Weight (kg)", "Reps", "Song"]].tail(10))
